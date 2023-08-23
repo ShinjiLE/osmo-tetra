@@ -41,6 +41,7 @@ int main(int argc, char **argv)
 {
 	int fd;
 	int opt;
+	int pack_bits=0;
 	struct tetra_rx_state *trs;
 	struct tetra_mac_state *tms;
 
@@ -53,13 +54,16 @@ int main(int argc, char **argv)
 	trs = talloc_zero(tetra_tall_ctx, struct tetra_rx_state);
 	trs->burst_cb_priv = tms;
 
-	while ((opt = getopt(argc, argv, "d:k:")) != -1) {
+	while ((opt = getopt(argc, argv, "d:k:P")) != -1) {
 		switch (opt) {
 		case 'd':
 			tms->dumpdir = strdup(optarg);
 			break;
 		case 'k':
 			load_keystore(optarg);
+			break;
+		case 'P':
+			pack_bits=1;
 			break;
 		default:
 			fprintf(stderr, "Unknown option %c\n", opt);
@@ -79,17 +83,44 @@ int main(int argc, char **argv)
 
 	tetra_gsmtap_init("localhost", 0);
 
-	while (1) {
-		uint8_t buf[64];
-		int len;
+	#define BUFLEN 64
 
-		len = read(fd, buf, sizeof(buf));
-		if (len < 0) {
-			perror("read");
-			exit(1);
-		} else if (len == 0) {
-			printf("EOF");
-			break;
+	while (1) {
+		uint8_t buf[BUFLEN];
+		int len;
+		if(pack_bits)
+		{
+			uint8_t temp_buf[BUFLEN/8];
+			int temp_len=0;
+			len=0;
+			temp_len = read(fd, temp_buf, sizeof(temp_buf));
+			if (temp_len < 0) {
+				perror("read");
+				exit(1);
+			} else if (temp_len == 0) {
+				printf("EOF");
+				break;
+			}
+			while(temp_len)
+			{
+				for(int i = 0;i<=7;i++)
+				{
+					buf[len] = ( temp_buf[ sizeof(temp_buf)-temp_len ] >> i ) & 0x01;
+					len++;
+				}
+				temp_len--;
+			}
+		}
+		else
+		{
+			len = read(fd, buf, sizeof(buf));
+			if (len < 0) {
+				perror("read");
+				exit(1);
+			} else if (len == 0) {
+				printf("EOF");
+				break;
+			}
 		}
 		tetra_burst_sync_in(trs, buf, len);
 	}
